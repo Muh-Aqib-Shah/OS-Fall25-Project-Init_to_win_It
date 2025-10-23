@@ -5,4 +5,4 @@
 **Team Members:**
 - Gehna Bhatia  
 - Muhammad Aqib Shah  
-- Muhammad Zayed  Nouman
+- Muhammad Zayed Nouman
