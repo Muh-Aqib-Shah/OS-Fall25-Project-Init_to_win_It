@@ -46,6 +46,9 @@ w_mepc(uint64 x)
 #define SSTATUS_UPIE (1L << 4) // User Previous Interrupt Enable
 #define SSTATUS_SIE (1L << 1)  // Supervisor Interrupt Enable
 #define SSTATUS_UIE (1L << 0)  // User Interrupt Enable
+#define SSTATUS_FS (3L << 13) // Floating-point Status bits
+
+
 
 static inline uint64
 r_sstatus()
@@ -346,6 +349,50 @@ sfence_vma()
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
+
+// ============================================================
+// FPU (Floating Point Unit) support ADDED
+// ============================================================
+
+// FPU Status bits in mstatus and sstatus
+#define MSTATUS_FS (3L << 13)
+#define SSTATUS_FS (3L << 13)
+
+// Read/write FCSR (Floating-Point Control and Status Register)
+static inline void
+w_fcsr(uint64 x)
+{
+  asm volatile("csrw fcsr, %0" : : "r" (x));
+}
+
+static inline uint64
+r_fcsr()
+{
+  uint64 x;
+  asm volatile("csrr %0, fcsr" : "=r" (x));
+  return x;
+}
+
+// Enable FPU in machine mode
+static inline void
+enable_fpu_mstatus()
+{
+  unsigned long x = r_mstatus();
+  x &= ~MSTATUS_FS;
+  x |= MSTATUS_FS;  // Set FS = 11 (Dirty)
+  w_mstatus(x);
+}
+
+// Enable FPU in supervisor mode
+static inline void
+enable_fpu_sstatus()
+{
+  unsigned long x = r_sstatus();
+  x &= ~SSTATUS_FS;
+  x |= SSTATUS_FS;  // Set FS = 11 (Dirty)
+  w_sstatus(x);
+}
+
 
 #endif // __ASSEMBLER__
 

@@ -75,6 +75,27 @@ vprintf(int fd, const char *fmt, va_list ap)
       } else if(c0 == 'l' && c1 == 'l' && c2 == 'd'){
         printint(fd, va_arg(ap, uint64), 10, 1);
         i += 2;
+      } else if(c0 == 'f'){
+        double val = va_arg(ap, double);
+        int int_part = (int)val;
+        double frac = val - int_part;
+        if (frac < 0) frac = -frac;
+        int frac_part = (int)(frac * 1000000); // 6 decimal places
+        // handle negative values properly
+        if (val < 0 && int_part == 0)
+          putc(fd, '-');
+        printint(fd, int_part, 10, 1);
+        putc(fd, '.');
+        // print leading zeros for fractional part
+        int temp = frac_part;
+        int zeros = 6;
+        while (temp > 0) {
+          temp /= 10;
+          zeros--;
+        }
+        for (int i = 0; i < zeros; i++)
+          putc(fd, '0');
+        printint(fd, frac_part, 10, 0);
       } else if(c0 == 'u'){
         printint(fd, va_arg(ap, uint32), 10, 0);
       } else if(c0 == 'l' && c1 == 'u'){

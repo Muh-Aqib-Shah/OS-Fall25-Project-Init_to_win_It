@@ -20,6 +20,12 @@ start()
   x |= MSTATUS_MPP_S;
   w_mstatus(x);
 
+ // Enable FPU in machine mode
+  enable_fpu_mstatus();
+
+  // Initialize FCSR (no exceptions, round to nearest)
+  w_fcsr(0);
+
   // set M Exception Program Counter to main, for mret.
   // requires gcc -mcmodel=medany
   w_mepc((uint64)main);

@@ -16,6 +16,43 @@ struct context {
   uint64 s9;
   uint64 s10;
   uint64 s11;
+
+  // FPU registers
+  uint64 f0;
+  uint64 f1;
+  uint64 f2;
+  uint64 f3;
+  uint64 f4;
+  uint64 f5;
+  uint64 f6;
+  uint64 f7;
+  uint64 f8;
+  uint64 f9;
+  uint64 f10;
+  uint64 f11;
+  uint64 f12;
+  uint64 f13;
+  uint64 f14;
+  uint64 f15;
+  uint64 f16;
+  uint64 f17;
+  uint64 f18;
+  uint64 f19;
+  uint64 f20;
+  uint64 f21;
+  uint64 f22;
+  uint64 f23;
+  uint64 f24;
+  uint64 f25;
+  uint64 f26;
+  uint64 f27;
+  uint64 f28;
+  uint64 f29;
+  uint64 f30;
+  uint64 f31;
+
+  uint64 fcsr;  // Floating-point control register
+
 };
 
 // Per-CPU state.
@@ -77,6 +114,14 @@ struct trapframe {
   /* 264 */ uint64 t4;
   /* 272 */ uint64 t5;
   /* 280 */ uint64 t6;
+
+  // enable floating-point support
+  uint64 sstatus;       // Saved sstatus register for FPU
+
+  // optional: to save/restore FPU registers
+  double fregs[32];
+
+
 };
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
