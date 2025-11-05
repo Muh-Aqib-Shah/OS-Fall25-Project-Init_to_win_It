@@ -17,7 +17,7 @@ struct context {
   uint64 s10;
   uint64 s11;
 
-  // FPU registers
+  // FPU register
   uint64 f0;
   uint64 f1;
   uint64 f2;

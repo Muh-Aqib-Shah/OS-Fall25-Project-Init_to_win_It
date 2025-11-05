@@ -23,7 +23,7 @@ swtch:
         sd s10, 96(a0)
         sd s11, 104(a0)
 
-        # Save fpu registers f0–f31
+        # Save fpu register f0–f31
         fsd f0, 112(a0)
         fsd f1, 120(a0)
         fsd f2, 128(a0)

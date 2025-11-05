@@ -23,7 +23,7 @@ main()
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
     procinit();      // process table
-    enable_fpu_sstatus();
+    enable_fpu_sstatus();//fpu
     w_fcsr(0);
     trapinit();      // trap vectors
     trapinithart();  // install kernel trap vector

@@ -5,7 +5,7 @@
 int
 main(void)
 {
-  printf("Starting FPU test...\n");
+  printf("Starting FPU test....\n");
 
   double sum = 0;
   for (double i = 1.0; i <= 50.0; i += 0.5)
