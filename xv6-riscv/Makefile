@@ -7,6 +7,7 @@
 
 K=kernel
 U=user
+LLAMA2C_DIR := ../llama2c
 
 OBJS = \
   $K/entry.o \
@@ -108,6 +109,7 @@ CFLAGS += -fno-builtin-free
 CFLAGS += -fno-builtin-memcpy -Wno-main
 CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
 CFLAGS += -I.
+CFLAGS += -I$(LLAMA2C_DIR)
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
 ifeq ($(LAB),net)
@@ -141,10 +143,20 @@ $K/%.o: $K/%.c
 $K/%.o: $K/%.S
 	$(CC) -g -c -o $@ $<
 
+../llama2c/cstring.o: ../llama2c/cstring.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+../llama2c/printfmt.o: ../llama2c/printfmt.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+../llama2c/sscan.o: ../llama2c/sscan.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 tags: $(OBJS)
 	etags kernel/*.S kernel/*.c
 
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+ULIB += ../llama2c/cstring.o ../llama2c/printfmt.o ../llama2c/sscan.o
 
 ifeq ($(LAB),lock)
 ULIB += $U/statistics.o
@@ -197,6 +209,8 @@ UPROGS=\
 	$U/_forphan\
 	$U/_dorphan\
 	$U/_fputest\
+	$U/_stringtests\
+
 
 ifeq ($(LAB),util)
 UPROGS += \
@@ -295,7 +309,7 @@ fs.img: mkfs/mkfs README $(UEXTRA) $(UPROGS)
 newfs.img: 
 	-mv -f fs.img fs.img.bk
 
--include kernel/*.d user/*.d
+-include kernel/*.d user/*.d $(LLAMA2C_DIR)/*.d
 
 clean:
 	rm -rf *.tex *.dvi *.idx *.aux *.log *.ind *.ilg *.dSYM *.zip *.pcap \
