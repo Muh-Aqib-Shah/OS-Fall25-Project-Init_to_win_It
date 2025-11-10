@@ -1,9 +1,18 @@
-#ifdef LAB_MMAP
+#ifndef XV6_USER_H
+#define XV6_USER_H
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "kernel/fcntl.h"
 typedef unsigned long size_t;
 typedef long int off_t;
-#endif
 
 #define SBRK_ERROR ((char *)-1)
+#ifndef SBRK_EAGER
+#define SBRK_EAGER 0
+#endif
+#ifndef SBRK_LAZY
+#define SBRK_LAZY  1
+#endif
 
 struct stat;
 
@@ -66,3 +75,6 @@ void printf(const char*, ...) __attribute__ ((format (printf, 1, 2)));
 // umalloc.c
 void* malloc(uint);
 void free(void*);
+
+#endif /* XV6_USER_H */
+

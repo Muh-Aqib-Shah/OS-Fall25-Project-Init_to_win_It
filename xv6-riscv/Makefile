@@ -157,6 +157,7 @@ tags: $(OBJS)
 
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 ULIB += ../llama2c/cstring.o ../llama2c/printfmt.o ../llama2c/sscan.o
+ULIB += $U/xv6_maths.o
 
 ifeq ($(LAB),lock)
 ULIB += $U/statistics.o
@@ -178,6 +179,20 @@ $U/_forktest: $U/forktest.o $(ULIB)
 	# in order to be able to max out the proc table.
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_forktest $U/forktest.o $U/ulib.o $U/usys.o
 	$(OBJDUMP) -S $U/_forktest > $U/forktest.asm
+
+# --- math lib objects ---
+$U/maths.o: $U/maths.c $U/xv6_maths.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$U/mathtests.o: $U/mathtests.c $U/xv6_maths.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- mathtests binary ---
+user/_mathtests: $U/mathtests.o $(ULIB)
+	$(LD) -z max-page-size=4096 -T user/user.ld -o $@ $^
+	$(OBJDUMP) -S $@ > user/mathtests.asm
+	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > user/mathtests.sym
+
 
 mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 	gcc $(XCFLAGS) -Wno-unknown-attributes -Werror -Wall -I. -o mkfs/mkfs mkfs/mkfs.c
@@ -210,7 +225,7 @@ UPROGS=\
 	$U/_dorphan\
 	$U/_fputest\
 	$U/_stringtests\
-
+	$U/_mathtests\
 
 ifeq ($(LAB),util)
 UPROGS += \
