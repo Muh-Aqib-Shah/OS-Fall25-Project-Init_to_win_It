@@ -1,4 +1,5 @@
 // user/stringtests.c
+#include "test_mileSt2.h"
 #include "kernel/types.h"
 #include "kernel/fcntl.h"
 #include "user/user.h"
@@ -8,8 +9,9 @@
 
 
 // simple test helpers (xv6 has no assert)
+static int pass = 0;
 static int fails = 0;
-static void ok(const char *name)  { printf("  [OK] %s\n", name); }
+static void ok(const char *name)  { printf("  [OK] %s\n", name); ++pass; }
 static void fail(const char *name){ printf("  [FAIL] %s\n", name); fails++; }
 
 static void expect_int(const char *name, int got, int want) {
@@ -25,10 +27,8 @@ static void expect_mem(const char *name, const void *a, const void *b, int n) {
   if (eq) ok(name); else fail(name);
 }
 
-int
-main(void)
-{
-  printf("=== string/format/scan tests ===\n");
+int stringtests(){
+   printf("\n\n======================String Tests======================\n");
 
   // --- strlen/strcpy/strcmp ---
   {
@@ -140,11 +140,9 @@ main(void)
 
   if (fails == 0) {
     printf("=== ALL TESTS PASSED ===\n");
-    exit(0);
   } else {
     printf("=== %d TEST(S) FAILED ===\n", fails);
-    exit(1);
   }
-  return 0;
+  return pass;
 }
 

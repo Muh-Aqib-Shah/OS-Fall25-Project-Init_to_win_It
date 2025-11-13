@@ -2,6 +2,7 @@
 #include "kernel/types.h"
 #include "user/user.h"
 #include "xv6_stdlib.h"
+#include "test_mileSt2.h"
 
 // Comparison functions for qsort and bsearch
 int compare_ints(const void* a, const void* b) {
@@ -339,11 +340,8 @@ void test_atof(TestResults* results) {
     }
 }
 
-// ============================================================================
-// Main Test Runner
-// ============================================================================
-int main(int argc, char* argv[]) {
-    printf("\n");
+int test_stdlib(){
+      printf("\n");
     printf("========================================\n");
     printf("  Standard Library Tests (xv6_stdlib)\n");
     printf("========================================\n");
@@ -357,7 +355,7 @@ int main(int argc, char* argv[]) {
     test_atof(&results);
     
     printf("\n========================================\n");
-    printf("  Test Summary\n");
+    printf("Stdlib Test Summary\n");
     printf("========================================\n");
     printf("Total Tests:  %d\n", results.passed + results.failed);
     printf("Passed:       %d\n", results.passed);
@@ -366,5 +364,5 @@ int main(int argc, char* argv[]) {
            (results.passed * 100) / (results.passed + results.failed));
     printf("========================================\n\n");
     
-    exit(0);
+    return results.passed;
 }

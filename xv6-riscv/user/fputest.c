@@ -1,17 +1,18 @@
+#include "test_mileSt2.h"
 #include "kernel/types.h"
 #include "kernel/stat.h"
 #include "user/user.h"
 
-int
-main(void)
-{
-  printf("Starting FPU test....\n");
+
+int fputest(){
+    printf("\n\n======================Fpu Tests======================\n");
 
   double sum = 0;
   for (double i = 1.0; i <= 50.0; i += 0.5)
     sum += i * i;
   
   int pid = fork();
+  if(pid < 0) { printf("Error in fputest.."); return 0; }
   if (pid == 0) {
     double sum2 = 0;
     for (double i = 1.0; i <= 50.0; i += 0.5)
@@ -25,6 +26,6 @@ main(void)
     printf("Parent: sum of squares = %f\n", sum);
   }
 
-  exit(0);
+  return 1;
 }
 

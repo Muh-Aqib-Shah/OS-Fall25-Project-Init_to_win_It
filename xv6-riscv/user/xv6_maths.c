@@ -20,12 +20,18 @@
 #define XV6_TWO_PI    6.28318530717958647692f
 #define XV6_LN2       0.69314718055994530942f
 #define XV6_INV_LN2   1.44269504088896340736f  // 1/ln(2)
+#define XV6_EPSILON     1.19209290e-07f
 #endif
 
 // ----- helpers to manufacture NaN / +/-INF without libm -----
 static float xv6m_nan(void) {
   volatile float z = 0.0f;
   return z / z; // NaN
+}
+// Get absolute value
+static float xv6_fabs_internal(float x) {
+    if (x < 0.0f) return -x;
+    return x;
 }
 static float xv6m_pos_inf(void) {
   volatile float z = 0.0f;
@@ -34,6 +40,14 @@ static float xv6m_pos_inf(void) {
 static float xv6m_neg_inf(void) {
   volatile float z = 0.0f;
   return -1.0f / z; // -INF
+}
+static int xv6m_isnan(float x) {
+    return x != x;
+}
+
+// Check if float is infinite
+static int xv6m_isinf(float x) {
+    return (x == xv6m_pos_inf() || x == xv6m_neg_inf());
 }
 
 // ----- fabs -----
@@ -44,49 +58,70 @@ float xv6m_fabsf(float x) {
 // ----- sqrt (Newton-Raphson) -----
 // Handles x < 0 -> NaN; x=0 -> 0.
 // A few Newton steps with a guarded initial guess works well for float.
+
 float xv6m_sqrtf(float x) {
-  if (x < 0.0f) return xv6m_nan();
-  if (x == 0.0f) return 0.0f;
-
-  // Initial guess: scale-based crude estimate.
-  float guess = x;
-  if (x > 1.0f)      guess = x * 0.5f;
-  else if (x > 0.25f) guess = 0.75f;
-  else                guess = 0.5f;
-
-  // 6 iterations are ample for float accuracy
-  for (int i = 0; i < 6; i++) {
-    guess = 0.5f * (guess + x / guess);
-  }
-  return guess;
+    // Handle special cases
+    if (x < 0.0f) return xv6m_nan();
+    if (x == 0.0f) return 0.0f;
+    if (x == 1.0f) return 1.0f;
+    if (xv6m_isnan(x)) return xv6m_nan();
+    if (xv6m_isinf(x)) return xv6m_pos_inf();
+    
+    // Initial guess using bit manipulation (Fast inverse square root trick adapted)
+    int i = *(int*)&x;
+    i = 0x5f3759df - (i >> 1);  // Magic constant for initial guess
+    float y = *(float*)&i;
+    
+    // Convert to normal sqrt (we got inverse sqrt, so invert it)
+    y = x * y;  // First approximation
+    
+    // Newton-Raphson iterations: y_new = 0.5 * (y + x/y)
+    // 4 iterations give us accuracy better than 1e-5
+    y = 0.5f * (y + x / y);
+    y = 0.5f * (y + x / y);
+    y = 0.5f * (y + x / y);
+    y = 0.5f * (y + x / y);
+    
+    return y;
 }
-
-// ----- exp (range-reduced Maclaurin on [-ln2/2, ln2/2]) -----
-// exp(x) = 2^k * exp(r), k = round(x / ln2), r in ~[-0.3466, 0.3466]
+// EXPONENTIAL - Taylor Series with Range Reduction
 float xv6m_expf(float x) {
-  // Rough under/overflow clamps for float
-  if (x > 88.0f)  return xv6m_pos_inf(); // overflow
-  if (x < -100.0f) return 0.0f;          // underflow
-
-  // Compute k and r
-  float kf = x * XV6_INV_LN2;
-  int k = (int)(kf + (kf >= 0 ? 0.5f : -0.5f)); // round to nearest int
-  float r = x - k * XV6_LN2;
-
-  // exp(r) via 5th-order Maclaurin: 1 + r + r^2/2! + r^3/3! + r^4/4! + r^5/5!
-  float r2 = r * r;
-  float r3 = r2 * r;
-  float r4 = r3 * r;
-  float r5 = r4 * r;
-  float er = 1.0f + r + r2 * 0.5f + r3 * (1.0f/6.0f) + r4 * (1.0f/24.0f) + r5 * (1.0f/120.0f);
-
-  // 2^k by simple scaling (k is small for practical ranges; this is fine)
-  float two_to_k = 1.0f;
-  if (k > 0)       { for (int i = 0; i < k; i++) two_to_k *= 2.0f; }
-  else if (k < 0)  { for (int i = 0; i < -k; i++) two_to_k *= 0.5f; }
-
-  return er * two_to_k;
+    // Handle special cases
+    if (xv6m_isnan(x)) return xv6m_nan();
+    if (x > 88.0f) return xv6m_pos_inf();  // Overflow threshold
+    if (x < -88.0f) return 0.0f;         // Underflow to 0
+    if (x == 0.0f) return 1.0f;
+    
+    // Range reduction: x = k*ln(2) + r, where r in [-ln(2)/2, ln(2)/2]
+    int k = (int)(x * XV6_INV_LN2 + (x > 0 ? 0.5f : -0.5f));
+    float r = x - k * XV6_LN2;
+    
+    // Taylor series for exp(r): exp(r) = 1 + r + r^2/2! + r^3/3! + ...
+    // Since r is small, this converges quickly
+    float result = 1.0f;
+    float term = 1.0f;
+    
+    // Use 12 terms for accuracy better than 1e-5
+    for (int i = 1; i <= 12; i++) {
+        term *= r / i;
+        result += term;
+        // Early termination if term becomes negligible
+        if (xv6_fabs_internal(term) < XV6_EPSILON) break;
+    }
+    
+    // Scale by 2^k using bit manipulation
+    // result = result * 2^k
+    // Float format: sign(1) | exponent(8) | mantissa(23)
+    // To multiply by 2^k, add k to the exponent
+    if (k != 0) {
+        int exp_bits = (k + 127) << 23;
+        float scale = *(float*)&exp_bits;
+        result *= scale;
+    }
+    
+    return result;
 }
+
 
 // ----- log (range reduction to [1/sqrt(2), sqrt(2)] and atanh series) -----
 // x = 2^k * r, r∈[~0.7071, ~1.4142]; y=(r-1)/(r+1); ln r = 2*(y + y^3/3 + y^5/5 + ...)
