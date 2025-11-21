@@ -9,6 +9,8 @@
 
 #define TX_RING_SIZE 16
 static struct tx_desc tx_ring[TX_RING_SIZE] __attribute__((aligned(16)));
+static char *tx_bufs[TX_RING_SIZE];
+
 
 #define RX_RING_SIZE 16
 static struct rx_desc rx_ring[RX_RING_SIZE] __attribute__((aligned(16)));
@@ -94,18 +96,38 @@ int
 e1000_transmit(char *buf, int len)
 {
   //
-  // Your code here.
+  // Transmit a packet by placing it in the TX descriptor ring.
   //
-  // buf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after send completes.
-  //
-  // return 0 on success.
-  // return -1 on failure (e.g., there is no descriptor available)
-  // so that the caller knows to free buf.
-  //
-
   
+  acquire(&e1000_lock);
+  
+  // Get the next TX ring index (where E1000 expects next packet)
+  uint32 tdt = regs[E1000_TDT];
+  
+  // Check if the ring is full
+  // If E1000_TXD_STAT_DD is not set, the E1000 hasn't finished transmitting
+  if((tx_ring[tdt].status & E1000_TXD_STAT_DD) == 0) {
+    // Ring is full, return error
+    release(&e1000_lock);
+    return -1;
+  }
+  
+  // Free the previous buffer at this descriptor (if there was one)
+  if(tx_bufs[tdt] != 0) {
+    kfree(tx_bufs[tdt]);
+  }
+  
+  // Fill in the descriptor
+  tx_bufs[tdt] = buf;
+  tx_ring[tdt].addr = (uint64)buf;
+  tx_ring[tdt].length = len;
+  tx_ring[tdt].cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  tx_ring[tdt].status = 0;  // Clear DD bit
+  
+  // Update the ring position
+  regs[E1000_TDT] = (tdt + 1) % TX_RING_SIZE;
+  
+  release(&e1000_lock);
   return 0;
 }
 
@@ -113,11 +135,45 @@ static void
 e1000_recv(void)
 {
   //
-  // Your code here.
-  //
   // Check for packets that have arrived from the e1000
   // Create and deliver a buf for each packet (using net_rx()).
   //
+  
+  
+  // Process all available packets
+  while(1) {
+    acquire(&e1000_lock);
+    // Get the next RX ring index (add 1 to RDT, modulo ring size)
+    uint32 rdt = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+    
+    // Check if a new packet is available
+    if((rx_ring[rdt].status & E1000_RXD_STAT_DD) == 0) {
+      release(&e1000_lock);
+      // No more packets available
+      break;
+    }
+    
+    // Get the packet buffer and length
+    char *buf = (char *)rx_ring[rdt].addr;
+    uint16 len = rx_ring[rdt].length;
+    
+    release(&e1000_lock);
+    
+    // Deliver the packet to the network stack
+    net_rx(buf, len);
+    
+    // Allocate a new buffer for this descriptor
+    char *newbuf = kalloc();
+    if(newbuf == 0)
+      panic("e1000_recv: kalloc failed");
+    
+    // Update the descriptor
+    rx_ring[rdt].addr = (uint64)newbuf;
+    rx_ring[rdt].status = 0;  // Clear DD bit
+    
+    // Update the E1000_RDT register
+    regs[E1000_RDT] = rdt;
+  }
 
 }
 

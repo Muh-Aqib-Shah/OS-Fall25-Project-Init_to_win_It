@@ -1,1 +1,1 @@
-LAB=new
+LAB=net
