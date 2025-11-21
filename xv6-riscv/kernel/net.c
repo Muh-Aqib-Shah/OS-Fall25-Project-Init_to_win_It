@@ -90,25 +90,34 @@ alloc_port(short port)
 // bind(int port)
 // prepare to receive UDP packets address to the port,
 // i.e. allocate any queues &c needed.
-//
+// You can bind the same port multiple times
 uint64
 sys_bind(void)
 {
   int port;
-  
   argint(0, &port);
-  
+
   acquire(&netlock);
-  
-  struct port_info *pi = alloc_port(port);
-  if(pi == 0) {
+
+  // First, check if this port is already bound
+  if (find_port((short)port) != 0) {
     release(&netlock);
-    return -1;  // port already bound
+    return -1;   // port already bound
   }
-  
+
+  // Now allocate a slot for this new bound port
+  struct port_info *pi = alloc_port((short)port);
+  if (pi == 0) {
+    // no free slot for a new bound port
+    release(&netlock);
+    return -1;
+  }
+
   release(&netlock);
   return 0;
 }
+
+
 
 //
 // unbind(int port)
