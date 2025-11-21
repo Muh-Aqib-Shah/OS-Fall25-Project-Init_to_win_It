@@ -10,6 +10,9 @@
 #include "file.h"
 #include "net.h"
 
+#define MAX_QUEUED_PACKETS 16
+#define MAX_PORTS 32
+
 // xv6's ethernet and IP addresses
 static uint8 local_mac[ETHADDR_LEN] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
 static uint32 local_ip = MAKE_IP_ADDR(10, 0, 2, 15);
@@ -19,10 +22,67 @@ static uint8 host_mac[ETHADDR_LEN] = { 0x52, 0x55, 0x0a, 0x00, 0x02, 0x02 };
 
 static struct spinlock netlock;
 
+struct packet_queue {
+  char *buf;          // packet buffer
+  int len;            // packet length
+  uint32 src_ip;      // source IP address
+  uint16 src_port;    // source UDP port
+};
+
+struct port_info {
+  int bound;          // is this port bound?
+  uint16 port_num;    // the actual port number
+  int head;           // queue head
+  int tail;           // queue tail
+  int count;          // number of packets in queue
+  struct packet_queue queue[MAX_QUEUED_PACKETS];
+};
+
+static struct port_info ports[MAX_PORTS];
+
 void
 netinit(void)
 {
   initlock(&netlock, "netlock");
+  
+  // Initialize all port structures
+  for(int i = 0; i < MAX_PORTS; i++) {
+    ports[i].bound = 0;
+    ports[i].port_num = 0;
+    ports[i].head = 0;
+    ports[i].tail = 0;
+    ports[i].count = 0;
+  }
+}
+
+// Find port info structure for a given port number
+static struct port_info*
+find_port(short port)
+{
+  for(int i = 0; i < MAX_PORTS; i++) {
+    if(ports[i].bound && ports[i].port_num == port) {
+      return &ports[i];
+    }
+  }
+  return 0;
+}
+
+// Allocate a port info structure for a given port number
+static struct port_info*
+alloc_port(short port)
+{
+  // Find a free slot
+  for(int i = 0; i < MAX_PORTS; i++) {
+    if(!ports[i].bound) {
+      ports[i].bound = 1;
+      ports[i].port_num = port;
+      ports[i].head = 0;
+      ports[i].tail = 0;
+      ports[i].count = 0;
+      return &ports[i];
+    }
+  }
+  return 0;  // no free slots
 }
 
 
@@ -34,11 +94,20 @@ netinit(void)
 uint64
 sys_bind(void)
 {
-  //
-  // Your code here.
-  //
-
-  return -1;
+  int port;
+  
+  argint(0, &port);
+  
+  acquire(&netlock);
+  
+  struct port_info *pi = alloc_port(port);
+  if(pi == 0) {
+    release(&netlock);
+    return -1;  // port already bound
+  }
+  
+  release(&netlock);
+  return 0;
 }
 
 //
@@ -49,10 +118,25 @@ sys_bind(void)
 uint64
 sys_unbind(void)
 {
-  //
-  // Optional: Your code here.
-  //
-
+  int port;
+  
+  argint(0, &port);
+  
+  acquire(&netlock);
+  
+  struct port_info *pi = find_port(port);
+  if(pi) {
+    // Free any queued packets
+    while(pi->count > 0) {
+      kfree(pi->queue[pi->head].buf);
+      pi->head = (pi->head + 1) % MAX_QUEUED_PACKETS;
+      pi->count--;
+    }
+    pi->bound = 0;
+    pi->port_num = 0;
+  }
+  
+  release(&netlock);
   return 0;
 }
 
@@ -71,15 +155,74 @@ sys_unbind(void)
 // dport, *src, and *sport are host byte order.
 // bind(dport) must previously have been called.
 //
+
+
 uint64
 sys_recv(void)
 {
-  //
-  // Your code here.
-  //
-  return -1;
+  int dport;
+  uint64 src_addr, sport_addr, buf_addr;
+  int maxlen;
+  
+  argint(0, &dport);
+  argaddr(1, &src_addr);
+  argaddr(2, &sport_addr);
+  argaddr(3, &buf_addr);
+  argint(4, &maxlen);
+  
+  struct proc *p = myproc();
+  
+  acquire(&netlock);
+  
+  struct port_info *pi = find_port(dport);
+  if(pi == 0) {
+    release(&netlock);
+    return -1;  // port not bound
+  }
+  
+  // Wait until a packet is available
+  while(pi->count == 0) {
+    sleep(pi, &netlock);
+  }
+  
+  // Get the packet from the queue
+  struct packet_queue *pq = &pi->queue[pi->head];
+  
+  // Store values before updating queue
+  uint32 src_ip = pq->src_ip;
+  uint16 src_port = pq->src_port;
+  int payload_len = pq->len;
+  char *payload_buf = pq->buf;
+  
+  // Update queue pointers BEFORE copyout (while still holding lock)
+  pi->head = (pi->head + 1) % MAX_QUEUED_PACKETS;
+  pi->count--;
+  
+  release(&netlock);  // RELEASE LOCK BEFORE COPYOUT!
+  
+  // Now do copyout WITHOUT holding the lock (copyout can sleep)
+  // Copy metadata to user space
+  if(copyout(p->pagetable, src_addr, (char*)&src_ip, sizeof(uint32)) < 0) {
+    kfree(payload_buf);
+    return -1;
+  }
+  if(copyout(p->pagetable, sport_addr, (char*)&src_port, sizeof(uint16)) < 0) {
+    kfree(payload_buf);
+    return -1;
+  }
+  
+  // Copy payload to user space
+  int copy_len = payload_len < maxlen ? payload_len : maxlen;
+  if(copyout(p->pagetable, buf_addr, payload_buf, copy_len) < 0) {
+    kfree(payload_buf);
+    return -1;
+  }
+  
+  // Free the packet buffer
+  kfree(payload_buf);
+  
+  return copy_len;
 }
-
 // This code is lifted from FreeBSD's ping.c, and is copyright by the Regents
 // of the University of California.
 static unsigned short
@@ -188,10 +331,74 @@ ip_rx(char *buf, int len)
     printf("ip_rx: received an IP packet\n");
   seen_ip = 1;
 
-  //
-  // Your code here.
-  //
+    // Parse the IP header
+  struct eth *eth = (struct eth *)buf;
+  struct ip *ip = (struct ip *)(eth + 1);
   
+  // Check if it's a UDP packet
+  if(ip->ip_p != IPPROTO_UDP) {
+    kfree(buf);
+    return;
+  }
+  
+  // Parse UDP header
+  struct udp *udp = (struct udp *)(ip + 1);
+  uint16 dport = ntohs(udp->dport);
+  uint16 sport = ntohs(udp->sport);
+  uint32 src_ip = ntohl(ip->ip_src);
+  uint16 udp_len = ntohs(udp->ulen);
+  
+  // Calculate payload length (UDP length includes UDP header)
+  int payload_len = udp_len - sizeof(struct udp);
+  
+  acquire(&netlock);
+  
+  // Find the port structure
+  struct port_info *pi = find_port(dport);
+  if(pi == 0) {
+    // Port not bound, drop the packet
+    release(&netlock);
+    kfree(buf);
+    return;
+  }
+  
+  // Check if queue is full (16 packets max)
+  if(pi->count >= MAX_QUEUED_PACKETS) {
+    // Queue full, drop the packet
+    release(&netlock);
+    kfree(buf);
+    return;
+  }
+  
+  // Allocate a new buffer for the payload
+  char *payload_buf = kalloc();
+  if(payload_buf == 0) {
+    release(&netlock);
+    kfree(buf);
+    return;
+  }
+  
+  // Copy the payload
+  char *payload = (char *)(udp + 1);
+  memmove(payload_buf, payload, payload_len);
+  
+  // Add to queue
+  struct packet_queue *pq = &pi->queue[pi->tail];
+  pq->buf = payload_buf;
+  pq->len = payload_len;
+  pq->src_ip = src_ip;
+  pq->src_port = sport;
+  
+  pi->tail = (pi->tail + 1) % MAX_QUEUED_PACKETS;
+  pi->count++;
+  
+  // Wake up any process waiting for this port
+  wakeup(pi);
+  
+  release(&netlock);
+  
+  // Free the original buffer
+  kfree(buf);
 }
 
 //
