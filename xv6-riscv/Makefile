@@ -207,6 +207,9 @@ $U/stringtests.o: $U/stringtests.c $U/test_mileSt2.h
 $U/fputest.o: $U/fputest.c $U/test_mileSt2.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+$U/_udp_client: user/udp_client.o $(ULIB)
+	$(LD) $(LDFLAGS) -T user/user.ld -o $@ $^
+
 $U/_test_mileSt2: $U/test_mileSt2.o $U/mathtests.o $U/stringtests.o $U/fputest.o $U/xv6_stdlib.o $U/stdlibtest.o $(ULIB)
 	$(LD) -z max-page-size=4096 -T $U/user.ld -o $@ $^
 	$(OBJDUMP) -S $@ > user/test_mileSt2.asm
@@ -245,6 +248,7 @@ UPROGS=\
 	$U/_dorphan\
 	$U/_test_mileSt2\
         $U/_sha256\
+	$U/_udp_client\
 
 ifeq ($(LAB),util)
 UPROGS += \
