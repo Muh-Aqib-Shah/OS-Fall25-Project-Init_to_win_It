@@ -347,6 +347,27 @@ sfence_vma()
   asm volatile("sfence.vma zero, zero");
 }
 
+static inline uint64
+rd_cycle(){
+  uint64 x;
+  asm volatile("rdcycle %0" : "=r" (x));
+  return x;
+}
+
+static inline uint64
+rd_time(){
+  uint64 x;
+  asm volatile("rdtime %0" : "=r" (x));
+  return x;
+}
+
+static inline uint64
+rd_instret(){
+  uint64 x;
+  asm volatile("rdinstret %0" : "=r" (x));
+  return x;
+}
+
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
 

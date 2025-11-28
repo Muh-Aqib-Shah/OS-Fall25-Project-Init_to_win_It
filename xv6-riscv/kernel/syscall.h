@@ -35,3 +35,9 @@
 #define SYS_recv      32
 #define SYS_pgpte     33
 #define SYS_kpgtbl    34
+
+// System calls for time tests
+
+#define SYS_getcycle  35
+#define SYS_gettime   36
+#define SYS_getinstret 37

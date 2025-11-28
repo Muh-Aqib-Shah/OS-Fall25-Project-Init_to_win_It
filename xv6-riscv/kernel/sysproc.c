@@ -107,3 +107,19 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_getcycle(void){
+  return rd_cycle();
+}
+
+uint64
+sys_gettime(void){
+  return rd_time();
+}
+
+uint64
+sys_getinstret(void)
+{
+  return rd_instret();
+}
