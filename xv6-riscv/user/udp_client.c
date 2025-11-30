@@ -283,7 +283,7 @@ char* fetch_tokenizer(int *size_out) {
     printf("################################################\n");
     return fetch_file(FILE_ID_TOKENIZER, size_out);
 }
-
+/*
 int main(int argc, char *argv[]) {
     printf("\n========================================================\n");
     printf("   UDP Client Test - RFTP File Transfer\n");
@@ -310,3 +310,4 @@ int main(int argc, char *argv[]) {
     
     exit((model_ok && tokenizer_ok) ? 0 : 1);
 }
+*/

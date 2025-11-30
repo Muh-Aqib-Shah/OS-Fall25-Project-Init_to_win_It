@@ -109,7 +109,7 @@ sys_uptime(void)
 }
 
 uint64
-sys_getcycle(void){
+sys_getcycles(void){
   return rd_cycle();
 }
 

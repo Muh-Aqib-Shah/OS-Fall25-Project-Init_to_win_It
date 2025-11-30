@@ -206,7 +206,7 @@ $U/stringtests.o: $U/stringtests.c $U/test_mileSt2.h
 
 $U/fputest.o: $U/fputest.c $U/test_mileSt2.h
 	$(CC) $(CFLAGS) -c -o $@ $<
-
+	
 $U/_udp_client: user/udp_client.o $(ULIB)
 	$(LD) $(LDFLAGS) -T user/user.ld -o $@ $^
 
@@ -214,8 +214,14 @@ $U/_test_mileSt2: $U/test_mileSt2.o $U/mathtests.o $U/stringtests.o $U/fputest.o
 	$(LD) -z max-page-size=4096 -T $U/user.ld -o $@ $^
 	$(OBJDUMP) -S $@ > user/test_mileSt2.asm
 	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > user/test_mileSt2.sym
-
-
+	
+$U/llm.o: $U/llm.c $U/xv6_stdlib.h $U/xv6_string.h $U/xv6_maths.h $U/udp_client.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+	
+$U/_llm: $U/llm.o $U/xv6_string.o $U/xv6_maths.o $U/xv6_stdlib.o $U/udp_client.o $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
+	$(OBJDUMP) -S $@ > $U/llm.asm
+	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $U/llm.sym
 
 mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 	gcc $(XCFLAGS) -Wno-unknown-attributes -Werror -Wall -I. -o mkfs/mkfs mkfs/mkfs.c
@@ -247,8 +253,8 @@ UPROGS=\
 	$U/_forphan\
 	$U/_dorphan\
 	$U/_test_mileSt2\
-        $U/_sha256\
-	$U/_udp_client\
+	$U/_llm\
+	
 
 ifeq ($(LAB),util)
 UPROGS += \

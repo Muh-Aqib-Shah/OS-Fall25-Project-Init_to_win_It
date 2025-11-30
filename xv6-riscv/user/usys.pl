@@ -48,6 +48,6 @@ entry("send");
 entry("recv");
 entry("pgpte");
 entry("kpgtbl");
-entry("getcycle");
+entry("getcycles");
 entry("gettime");
 entry("getinstret");

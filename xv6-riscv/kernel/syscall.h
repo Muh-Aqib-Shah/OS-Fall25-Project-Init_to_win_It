@@ -38,6 +38,6 @@
 
 // System calls for time tests
 
-#define SYS_getcycle  35
+#define SYS_getcycles  35
 #define SYS_gettime   36
 #define SYS_getinstret 37

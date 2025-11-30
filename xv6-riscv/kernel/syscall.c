@@ -104,7 +104,7 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
-extern uint64 sys_getcycle(void);
+extern uint64 sys_getcycles(void);
 extern uint64 sys_gettime(void);
 extern uint64 sys_getinstret(void);
 
@@ -153,7 +153,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_pgpte] sys_pgpte,
 [SYS_kpgtbl] sys_kpgtbl,
 #endif
-[SYS_getcycle]   sys_getcycle,
+[SYS_getcycles]   sys_getcycles,
 [SYS_gettime]    sys_gettime,
 [SYS_getinstret] sys_getinstret
 };

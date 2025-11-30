@@ -170,6 +170,7 @@ void sha256_hash(const unsigned char *data, unsigned int len, unsigned char hash
 }
 
 #ifndef SHA256_AS_LIBRARY
+/*
 // Helper function to compare hashes
 static int hash_equals(const unsigned char *h1, const unsigned char *h2) {
     for (int i = 0; i < 32; i++) {
@@ -206,7 +207,6 @@ static void run_test(const char *name, const char *input, const unsigned char *e
     print_hash(hash);
     printf("\n  Result: %s\n\n", hash_equals(hash, expected) ? "PASS" : "FAIL");
 }
-
 
 int main(int argc, char *argv[]) {
     printf("SHA-256 Test Suite\n");
@@ -255,4 +255,6 @@ run_test("Multi-block", "The quick brown fox jumps over the lazy dog. This is a 
     printf("All tests completed!\n");
     exit(0);
 }
+*/
 #endif 
+

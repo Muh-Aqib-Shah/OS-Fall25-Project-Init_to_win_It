@@ -11,7 +11,7 @@
 #define LIST  4
 #define BACK  5
 
-#define MAXARGS 10
+#define MAXARGS 64
 
 struct cmd {
   int type;
@@ -298,6 +298,23 @@ gettoken(char **ps, char *es, char **q, char **eq)
       s++;
     }
     break;
+  case '"':
+    s++;            // skip opening quote
+    if(q) *q = s;   // start of token
+
+    while(s < es && *s != '"')
+        s++;
+
+    if(eq) *eq = s; // end AT closing quote
+
+    if(s < es) s++; // skip closing quote
+
+    // skip trailing whitespace
+    while (s < es && strchr(whitespace, *s))
+        s++;
+
+    *ps = s;
+    return 'a';      // normal argument token
   default:
     ret = 'a';
     while(s < es && !strchr(whitespace, *s) && !strchr(symbols, *s))
