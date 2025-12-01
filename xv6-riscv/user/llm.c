@@ -111,7 +111,8 @@ typedef struct {
 
 // CPU frequency for converting cycles -> seconds
 // TODO: set this to whatever your xv6 CPU freq is (e.g., 1e9 for 1 GHz)
-#define CPU_FREQ_HZ 1000000000.0
+// default: 10 MHZ
+#define CPU_FREQ_HZ 10000000.0
 
 // Program start timestamp (for TTFT + End-to-End)
 unsigned long long g_program_start_cycles = 0;
@@ -129,7 +130,7 @@ void reset_benchmark_counters(void) {
 // Neural network operations
 
 void rmsnorm(float* o, float* x, float* weight, int size) {
-    unsigned long long start = getcycles();
+    unsigned long long start = gettime();
     
     // calculate sum of squares
     float ss = 0.0f;
@@ -145,11 +146,11 @@ void rmsnorm(float* o, float* x, float* weight, int size) {
         o[j] = weight[j] * (ss * x[j]);
     }
     
-    activation_cycles += (getcycles() - start);
+    activation_cycles += (gettime() - start);
 }
 
 void softmax(float* x, int size) {
-    unsigned long long start = getcycles();
+    unsigned long long start = gettime();
     
     // find max value for numerical stability
     float max_val = x[0];
@@ -171,11 +172,11 @@ void softmax(float* x, int size) {
         x[i] /= sum;
     }
     
-    activation_cycles += (getcycles() - start);
+    activation_cycles += (gettime() - start);
 }
 
 void matmul(float* output, float* input, float* weight, int n, int d) {
-    unsigned long long start = getcycles();
+    unsigned long long start = gettime();
    
     // W (d,n) @ x (n,) -> xout (d,)   
     
@@ -188,7 +189,7 @@ void matmul(float* output, float* input, float* weight, int n, int d) {
         output[i] = val;
     }
     
-    matmul_cycles += (getcycles() - start);
+    matmul_cycles += (gettime() - start);
 }
 
 // ----------------------------------------------------------------------------
@@ -214,7 +215,7 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
         rmsnorm(s->xb, s->x, &(w->rms_att_weight[l * dim]), dim);
 
         // === Attention timing: QKV + scores + output ===
-        unsigned long long att_start = getcycles();
+        unsigned long long att_start = gettime();
         
         // qkv matmuls for this position
         matmul(s->q, s->xb, &(w->wq[l * dim * dim]), dim, dim);
@@ -294,7 +295,7 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
         matmul(s->xb2, s->xb, &(w->wo[l * dim * dim]), dim, dim);
 
         // record attention time (QKV + scores + output)
-        attention_cycles += (getcycles() - att_start);
+        attention_cycles += (gettime() - att_start);
         
         // residual connection back into x
         for (int i = 0; i < dim; i++) {
@@ -304,7 +305,7 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
         // ffn rmsnorm (activations)
         rmsnorm(s->xb, s->x, &(w->rms_ffn_weight[l * dim]), dim);
         
-        unsigned long long ffn_start = getcycles();
+        unsigned long long ffn_start = gettime();
         
         // FFN: w1, w3
         matmul(s->hb,  s->xb, &(w->w1[l * dim * hidden_dim]), dim, hidden_dim);
@@ -323,7 +324,7 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
         // FFN: w2
         matmul(s->xb, s->hb, &(w->w2[l * hidden_dim * dim]), hidden_dim, dim);
         
-        ffn_cycles += (getcycles() - ffn_start);
+        ffn_cycles += (gettime() - ffn_start);
         
         // residual connection
         for (int i = 0; i < dim; i++) {
@@ -342,19 +343,19 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
 // Sampling utilities
 
 int sample(float* probabilities, int n, float coin) {
-    unsigned long long start = getcycles();
+    unsigned long long start = gettime();
     
     // sample index from probabilities, they must sum to 1
     float cdf = 0.0f;
     for (int i = 0; i < n; i++) {
         cdf += probabilities[i];
         if (coin < cdf) {
-            sampling_cycles += (getcycles() - start);
+            sampling_cycles += (gettime() - start);
             return i;
         }
     }
     
-    sampling_cycles += (getcycles() - start);
+    sampling_cycles += (gettime() - start);
     return n - 1; // in case of rounding errors
 }
 
@@ -770,7 +771,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     unsigned long long gen_start_cycles = 0;
 
     // Inference start: right before first forward pass
-    unsigned long long infer_start_cycles = getcycles();
+    unsigned long long infer_start_cycles = gettime();
 
 
     printf(stdout,"<start>\n");
@@ -812,7 +813,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
 
             // First *generated* token -> TTFT
             if (!ttft_measured) {
-                unsigned long long first_token_cycle = getcycles();
+                unsigned long long first_token_cycle = gettime();
                 ttft_cycles = first_token_cycle - g_program_start_cycles;
                 gen_start_cycles = first_token_cycle;
                 ttft_measured = 1;
@@ -839,7 +840,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     printf(stdout,"\n<end>\n");
 
     // End-to-end from program start
-    unsigned long long end_cycles = getcycles();
+    unsigned long long end_cycles = gettime();
     unsigned long long e2e_cycles = end_cycles - g_program_start_cycles;
 
     // Inference-only time (prefill + decode loop)
@@ -881,22 +882,22 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     printf(stdout,"Prompt:\n\"%s\"\n", prompt);
     printf(stdout,"Prompt Tokens: %d\n", num_prompt_tokens);
     printf(stdout,"Output Tokens: %d\n", generated_tokens);
-    printf(stdout,"Temperature: %.1f\n", temperature);
+    printf(stdout,"Temperature: %f\n", temperature);
     printf(stdout,"Seed: %llu\n", seed);
 
     printf(stdout,"PRIMARY METRICS:\n");
-    printf(stdout,"TTFT: %llu cycles (%.6f seconds)\n",
+    printf(stdout,"TTFT: %llu cycles (%f seconds)\n",
            ttft_cycles, ttft_seconds);
-    printf(stdout,"TPS: %.3f tokens/sec\n", tps);
-    printf(stdout,"End-to-End: %llu cycles (%.6f seconds)\n",
+    printf(stdout,"TPS: %f tokens/sec\n", tps);
+    printf(stdout,"End-to-End: %llu cycles (%f seconds)\n",
            e2e_cycles, e2e_seconds);
 
     printf(stdout,"HOTSPOT BREAKDOWN (%% of inference time):\n");
-    printf(stdout,"matmul(): %.1f%%\n", matmul_pct);
-    printf(stdout,"Activations (expf, sqrtf): %.1f%%\n", activation_pct);
-    printf(stdout,"Attention: %.1f%%\n", attention_pct);
-    printf(stdout,"FFN: %.1f%%\n", ffn_pct);
-    printf(stdout,"Sampling: %.1f%%\n", sampling_pct);
+    printf(stdout,"matmul(): %f\n", matmul_pct);
+    printf(stdout,"Activations (expf, sqrtf): %f%%\n", activation_pct);
+    printf(stdout,"Attention: %f%%\n", attention_pct);
+    printf(stdout,"FFN: %f%%\n", ffn_pct);
+    printf(stdout,"Sampling: %f%%\n", sampling_pct);
 
     printf(stdout,"NOTES: Overlapping categories; matmul is used inside Attention and FFN.\n");
     printf(stdout,"===================\n");
@@ -910,7 +911,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
 int main(int argc, char *argv[]) {
 
     // Program start time for TTFT & End-to-End
-    g_program_start_cycles = getcycles();
+    g_program_start_cycles = gettime();
 
     // Default parameters
     char* prompt = "Once upon a time";
