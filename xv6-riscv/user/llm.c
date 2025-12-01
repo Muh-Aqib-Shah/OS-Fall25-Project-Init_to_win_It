@@ -30,6 +30,15 @@
 #define stdout 1
 #define stderr 2
 
+const char* g_test_name = "RUN";
+
+// Timing variables for benchmarking
+unsigned long long matmul_cycles = 0;
+unsigned long long activation_cycles = 0;
+unsigned long long attention_cycles = 0;
+unsigned long long ffn_cycles = 0;
+unsigned long long sampling_cycles = 0;
+
 // printf macros
 
 #define printf(stream, fmt, ...) do { \
@@ -100,13 +109,21 @@ typedef struct {
     int memory_size;
 } Transformer;
 
-// Timing variables for benchmarking
-unsigned long long matmul_cycles = 0;
-unsigned long long activation_cycles = 0;
-unsigned long long attention_cycles = 0;
-unsigned long long ffn_cycles = 0;
-unsigned long long sampling_cycles = 0;
+// CPU frequency for converting cycles -> seconds
+// TODO: set this to whatever your xv6 CPU freq is (e.g., 1e9 for 1 GHz)
+#define CPU_FREQ_HZ 1000000000.0
 
+// Program start timestamp (for TTFT + End-to-End)
+unsigned long long g_program_start_cycles = 0;
+
+// Reset hotspot cycle counters before each benchmark run
+void reset_benchmark_counters(void) {
+    matmul_cycles      = 0;
+    activation_cycles  = 0;
+    attention_cycles   = 0;
+    ffn_cycles         = 0;
+    sampling_cycles    = 0;
+}
 
 // ----------------------------------------------------------------------------
 // Neural network operations
@@ -193,8 +210,11 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
     
     // forward all the layers
     for (int l = 0; l < p->n_layers; l++) {
-        // attention rmsnorm
+        // attention rmsnorm (counted in activation_cycles)
         rmsnorm(s->xb, s->x, &(w->rms_att_weight[l * dim]), dim);
+
+        // === Attention timing: QKV + scores + output ===
+        unsigned long long att_start = getcycles();
         
         // qkv matmuls for this position
         matmul(s->q, s->xb, &(w->wq[l * dim * dim]), dim, dim);
@@ -215,22 +235,21 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
                 float k1 = k[i + 1];
                 float fcr = freq_cis_real_row[i / 2];
                 float fci = freq_cis_imag_row[i / 2];
-                q[i] = q0 * fcr - q1 * fci;
+                q[i]     = q0 * fcr - q1 * fci;
                 q[i + 1] = q0 * fci + q1 * fcr;
-                k[i] = k0 * fcr - k1 * fci;
+                k[i]     = k0 * fcr - k1 * fci;
                 k[i + 1] = k0 * fci + k1 * fcr;
             }
         }
         
         // save key, value at this time step (pos) to our kv cache
         int loff = l * p->seq_len * dim; // kv cache layer offset
-        float* key_cache_row = &(s->key_cache[loff + pos * dim]);
+        float* key_cache_row   = &(s->key_cache[loff + pos * dim]);
         float* value_cache_row = &(s->value_cache[loff + pos * dim]);
-        memcpy(key_cache_row, s->k, dim * sizeof(float));
+        memcpy(key_cache_row,   s->k, dim * sizeof(float));
         memcpy(value_cache_row, s->v, dim * sizeof(float));
         
         // multi-head attention
-        unsigned long long att_start = getcycles();
         // parallelized here
         for (int h = 0; h < p->n_heads; h++) {
             // get the query vector for this head
@@ -271,24 +290,24 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
             }
         }
         
-        attention_cycles += (getcycles() - att_start);
-        
         // final matmul to get the output of the attention
         matmul(s->xb2, s->xb, &(w->wo[l * dim * dim]), dim, dim);
+
+        // record attention time (QKV + scores + output)
+        attention_cycles += (getcycles() - att_start);
         
         // residual connection back into x
         for (int i = 0; i < dim; i++) {
             s->x[i] += s->xb2[i];
         }
         
-        // ffn rmsnorm
+        // ffn rmsnorm (activations)
         rmsnorm(s->xb, s->x, &(w->rms_ffn_weight[l * dim]), dim);
         
         unsigned long long ffn_start = getcycles();
         
-        // Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
-        // first calculate self.w1(x) and self.w3(x)
-        matmul(s->hb, s->xb, &(w->w1[l * dim * hidden_dim]), dim, hidden_dim);
+        // FFN: w1, w3
+        matmul(s->hb,  s->xb, &(w->w1[l * dim * hidden_dim]), dim, hidden_dim);
         matmul(s->hb2, s->xb, &(w->w3[l * dim * hidden_dim]), dim, hidden_dim);
         
         // SwiGLU non-linearity
@@ -301,7 +320,7 @@ void transformer_forward(int token, int pos, Config* p, TransformerWeights* w, R
             s->hb[i] = val;
         }
         
-        // final matmul to get the output of the ffn
+        // FFN: w2
         matmul(s->xb, s->hb, &(w->w2[l * hidden_dim * dim]), hidden_dim, dim);
         
         ffn_cycles += (getcycles() - ffn_start);
@@ -743,14 +762,21 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     
     int token = prompt_tokens[0];
     int pos = 0;
-    
-    unsigned long long ttft_start = getcycles();
+
+    // benchmarking counters
+    int generated_tokens = 0;
     int ttft_measured = 0;
     unsigned long long ttft_cycles = 0;
-    
+    unsigned long long gen_start_cycles = 0;
+
+    // Inference start: right before first forward pass
+    unsigned long long infer_start_cycles = getcycles();
+
+
     printf(stdout,"<start>\n");
-    
-    while (pos < steps) {
+
+    // Now: steps = max number of *generated* tokens (not total positions)
+    while (pos < p->seq_len && generated_tokens < steps) {
         // Forward pass
         transformer_forward(token, pos, p, &model->weights, s);
         
@@ -762,7 +788,8 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
             if (temperature == 0.0f) {
                 next = argmax(s->logits, p->vocab_size);
             } else {
-                // Apply softmax
+
+                 // Apply softmax
                 float max_val = s->logits[0];
                 for (int i = 1; i < p->vocab_size; i++) {
                     if (s->logits[i] > max_val) max_val = s->logits[i];
@@ -782,11 +809,16 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
                 seed = seed * 1664525ULL + 1013904223ULL;
                 next = sample(s->logits, p->vocab_size, coin);
             }
-            
+
+            // First *generated* token -> TTFT
             if (!ttft_measured) {
-                ttft_cycles = getcycles() - ttft_start;
+                unsigned long long first_token_cycle = getcycles();
+                ttft_cycles = first_token_cycle - g_program_start_cycles;
+                gen_start_cycles = first_token_cycle;
                 ttft_measured = 1;
             }
+
+            generated_tokens++;
         }
         
         // Decode token
@@ -805,21 +837,70 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     }
     
     printf(stdout,"\n<end>\n");
-    
-    // Output timing information
-    unsigned long long total_cycles = getcycles() - ttft_start;
-    //int generation_tokens = steps - num_prompt_tokens;
-    
-    printf(stdout,"\n--- BENCHMARK RESULTS ---\n");
-    printf(stdout,"TTFT: %llu cycles\n", ttft_cycles);
-    printf(stdout,"End-to-End: %llu cycles\n", total_cycles);
-    printf(stdout,"\n--- COMPUTATIONAL HOTSPOTS ---\n");
-    printf(stdout,"matmul: %llu cycles\n", matmul_cycles);
-    printf(stdout,"activations: %llu cycles\n", activation_cycles);
-    printf(stdout,"attention: %llu cycles\n", attention_cycles);
-    printf(stdout,"FFN: %llu cycles\n", ffn_cycles);
-    printf(stdout,"sampling: %llu cycles\n", sampling_cycles);
-    
+
+    // End-to-end from program start
+    unsigned long long end_cycles = getcycles();
+    unsigned long long e2e_cycles = end_cycles - g_program_start_cycles;
+
+    // Inference-only time (prefill + decode loop)
+    unsigned long long infer_end_cycles = end_cycles;
+    unsigned long long infer_cycles_ull = infer_end_cycles - infer_start_cycles;
+
+    if (gen_start_cycles == 0) {
+        // In case we never generated any new tokens (edge case)
+        gen_start_cycles = end_cycles;
+    }
+    unsigned long long gen_cycles = end_cycles - gen_start_cycles;
+
+    double ttft_seconds = (double)ttft_cycles / CPU_FREQ_HZ;
+    double e2e_seconds  = (double)e2e_cycles / CPU_FREQ_HZ;
+
+    // TPS: (output_tokens - 1) / generation_time
+    double tps = 0.0;
+    if (generated_tokens > 1 && gen_cycles > 0) {
+        double gen_seconds = (double)gen_cycles / CPU_FREQ_HZ;
+        tps = (double)(generated_tokens - 1) / gen_seconds;
+    }
+
+    // Hotspot percentages (relative to inference time)
+    double infer_cycles = (double)infer_cycles_ull;
+    if (infer_cycles <= 0.0) infer_cycles = 1.0; // avoid div0
+
+    double matmul_pct      = 100.0 * (double)matmul_cycles     / infer_cycles;
+    double activation_pct  = 100.0 * (double)activation_cycles / infer_cycles;
+    double attention_pct   = 100.0 * (double)attention_cycles  / infer_cycles;
+    double ffn_pct         = 100.0 * (double)ffn_cycles        / infer_cycles;
+    double sampling_pct    = 100.0 * (double)sampling_cycles   / infer_cycles;
+
+
+    // === Structured benchmark output in the required format ===
+    // NOTE: we'll pass test_name + seed from main (next section)
+    extern const char* g_test_name;  // declared in main
+
+    printf(stdout,"\n=== TEST RUN %s ===\n", g_test_name);
+    printf(stdout,"Prompt:\n\"%s\"\n", prompt);
+    printf(stdout,"Prompt Tokens: %d\n", num_prompt_tokens);
+    printf(stdout,"Output Tokens: %d\n", generated_tokens);
+    printf(stdout,"Temperature: %.1f\n", temperature);
+    printf(stdout,"Seed: %llu\n", seed);
+
+    printf(stdout,"PRIMARY METRICS:\n");
+    printf(stdout,"TTFT: %llu cycles (%.6f seconds)\n",
+           ttft_cycles, ttft_seconds);
+    printf(stdout,"TPS: %.3f tokens/sec\n", tps);
+    printf(stdout,"End-to-End: %llu cycles (%.6f seconds)\n",
+           e2e_cycles, e2e_seconds);
+
+    printf(stdout,"HOTSPOT BREAKDOWN (%% of inference time):\n");
+    printf(stdout,"matmul(): %.1f%%\n", matmul_pct);
+    printf(stdout,"Activations (expf, sqrtf): %.1f%%\n", activation_pct);
+    printf(stdout,"Attention: %.1f%%\n", attention_pct);
+    printf(stdout,"FFN: %.1f%%\n", ffn_pct);
+    printf(stdout,"Sampling: %.1f%%\n", sampling_pct);
+
+    printf(stdout,"NOTES: Overlapping categories; matmul is used inside Attention and FFN.\n");
+    printf(stdout,"===================\n");
+
     free(prompt_tokens);
 }
 
@@ -828,25 +909,26 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
 
 int main(int argc, char *argv[]) {
 
+    // Program start time for TTFT & End-to-End
+    g_program_start_cycles = getcycles();
+
     // Default parameters
     char* prompt = "Once upon a time";
     float temperature = 0.0f;
-    float topp = 0.9;
-    int steps = 200;
+    float topp = 0.9f;
+    int steps = 200; // now: max *output* tokens
     unsigned long long seed = 12345;
-    
-    // Parse command line arguments (simplified for xV6)
-    
-    // argument structure llm <prompt> <steps> <temperature> <top_n> <seed>
+
+    // Optional test name for benchmark output: llm "<prompt>" <steps> <temp> <top_p> <seed> <test_name>
     if (argc >= 2) prompt = argv[1];
     if (argc >= 3) steps = xv6_atoi(argv[2]);
     if (argc >= 4) temperature = xv6_atof(argv[3]);
     if (argc >= 5) topp = xv6_atof(argv[4]);
     if (argc >= 6) seed = xv6_atoi(argv[5]);
-    
-    
+    if (argc >= 7) g_test_name = argv[6];  // e.g. "T1", "T2", ...
+
     printf(stdout,"prompt: %s\n",prompt);
-    printf(stdout,"steps: %d\nTemperature %f\n",steps,temperature);
+    printf(stdout,"steps (max output tokens): %d\nTemperature %f\n",steps,temperature);
     printf(stdout,"Topp_n%f\nSeed %lld\n",topp,seed);
     printf(stdout,"Initializing LLM in xV6...\n");
     
@@ -856,7 +938,7 @@ int main(int argc, char *argv[]) {
     // Load model configuration and weights
     printf(stdout,"Loading model weights...\n");
     read_checkpoint(&transformer.config, &transformer.weights, 
-                   &transformer.memory, &transformer.memory_size);
+                    &transformer.memory, &transformer.memory_size);
     
     // Allocate run state
     printf(stdout,"Allocating run state...\n");
@@ -867,11 +949,14 @@ int main(int argc, char *argv[]) {
     Tokenizer* tokenizer = build_tokenizer(transformer.config.vocab_size);
     
     printf(stdout,"Starting generation with prompt: %s\n", prompt);
-    printf(stdout,"Steps: %d, Temperature: %f,Topp: %f Seed: %llu\n", 
-           steps, temperature,topp, seed);
+    printf(stdout,"Steps (max output tokens): %d, Temperature: %f, Topp: %f Seed: %llu\n", 
+           steps, temperature, topp, seed);
+
+    // Reset hotspots for this run
+    reset_benchmark_counters();
     
-    // Run generation
-    generate(&transformer, tokenizer, prompt, steps, temperature,topp, seed);
+    // Run generation (now benchmark-aware)
+    generate(&transformer, tokenizer, prompt, steps, temperature, topp, seed);
     
     // Cleanup
     free_tokenizer(tokenizer, transformer.config.vocab_size);
