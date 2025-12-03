@@ -756,8 +756,8 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     int pos = 0;
 
     // benchmarking counters
-    int output_tokens = 0; 
-    int generated_tokens = 0;
+    int generated_tokens = 0; 
+    int output_tokens = 0;
     int ttft_measured = 0;
     unsigned long long ttft_cycles = 0;
     unsigned long long gen_start_cycles = 0;
@@ -772,7 +772,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     printf(stdout,"<start>\n");
 
     // Now: steps = max number of *generated* tokens (not total positions)
-    while (pos < p->seq_len && output_tokens < steps) {
+    while (pos < p->seq_len && generated_tokens < (steps + num_prompt_tokens)) {
         // Forward pass
         transformer_forward(token, pos, p, &model->weights, s);
         
@@ -814,7 +814,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
                 ttft_measured = 1;
             }
 
-            generated_tokens++;
+            output_tokens++;
         }
         
         // Decode token
@@ -829,11 +829,11 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
         } else if (next < 259) {
             // Byte tokens (characters)
             printf(stdout,"%c", (char)(next - 3));
-            output_tokens++;
+            generated_tokens++;
         } else if (next < t->vocab_size && t->vocab[next]) {
             // Multi-character tokens
             printf(stdout,"%s", t->vocab[next]);
-            output_tokens++;
+            generated_tokens++;
         }
         
         token = next;
@@ -843,7 +843,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
         printf(stdout,"\n<end>\n");
 
     // End-to-end from program start
-    unsigned long long end_cycles = getcycles();
+    unsigned long long end_cycles = gettime();
     unsigned long long e2e_cycles = end_cycles - g_program_start_cycles;
 
 
@@ -857,11 +857,11 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     double ttft_seconds = (double)ttft_cycles / CPU_FREQ_HZ;
     double e2e_seconds  = (double)e2e_cycles / CPU_FREQ_HZ;
 
-    // TPS: (output_tokens - 1) / generation_time
+    // TPS: (generated_tokens - 1) / generation_time
     double tps = 0.0;
-    if (generated_tokens > 1 && gen_cycles > 0) {
+    if (output_tokens > 1 && gen_cycles > 0) {
         double gen_seconds = (double)gen_cycles / CPU_FREQ_HZ;
-        tps = (double)(generated_tokens - 1) / gen_seconds;
+        tps = (double)(generated_tokens - 1) / gen_seconds; //change here(out)
     }
 
     unsigned long long hotspot_total =
@@ -900,6 +900,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     int samp_int    = (int)sampling_pct;
     int samp_frac   = (int)((sampling_pct - samp_int) * 10.0 + 0.5);
 
+
     if (matmul_frac < 0) matmul_frac = -matmul_frac;
     if (act_frac < 0)    act_frac    = -act_frac;
     if (att_frac < 0)    att_frac    = -att_frac;
@@ -913,7 +914,7 @@ void generate(Transformer* model, Tokenizer* t, char* prompt,
     printf(stdout, "Prompt:\n\"%s\"\n", prompt);
     printf(stdout, "Prompt Tokens: %d\n", num_prompt_tokens);
     printf(stdout, "Output Tokens: %d\n", output_tokens);
-    printf(stdout, "Generated Tokens: %d\n", generated_tokens);
+    printf(stdout, "Total Generated Tokens: %d\n", generated_tokens);
     printf(stdout, "Temperature: %d.%d\n", (int)temperature, 0);
     printf(stdout, "Seed: %llu\n", seed);
 

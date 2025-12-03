@@ -267,6 +267,7 @@ char* fetch_file(int file_id, int *size_out) {
 cleanup:
     if (received) free(received);
     if (!success && file_data) { free(file_data); file_data = 0; }
+    if(port_bound){ unbind(CLIENT_PORT); port_bound = 0; }
     return file_data;
 }
 

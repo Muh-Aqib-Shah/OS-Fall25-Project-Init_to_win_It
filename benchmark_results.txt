@@ -1,0 +1,253 @@
+=== TEST RUN T1_run1 ===
+Prompt:
+"Once upon a time"
+Prompt Tokens: 17
+Output Tokens: 50
+Temperature: 0.0
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 205703410 cycles (20.570341 seconds)
+TPS: 0.9 tokens/sec
+End-to-End: 55921549865 cycles (5592.154986 seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.7%
+Activations (expf, sqrtf): 0.2%
+Attention: 10.2%
+FFN: 18.9%
+Sampling: 0.0%
+NOTES: Categories add to 100%. matmul time counted separately.
+===================
+
+=== TEST RUN T1_run2 ===
+Prompt:
+"Once upon a time"
+Prompt Tokens: 17
+Output Tokens: 50
+Temperature: 0.0
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 205703410 cycles (20.570341 seconds)
+TPS: 0.9 tokens/sec
+End-to-End: 55921549865 cycles (5592.154986 seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.7%
+Activations (expf, sqrtf): 0.2%
+Attention: 10.2%
+FFN: 18.9%
+Sampling: 0.0%
+NOTES: Categories add to 100%. matmul time counted separately.
+===================
+
+
+=== TEST RUN T1_run3 ===
+Prompt:
+"Once upon a time"
+Prompt Tokens: 17
+Output Tokens: 50
+Temperature: 0.0
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 205703410 cycles (20.570341 seconds)
+TPS: 0.9 tokens/sec
+End-to-End: 55921549865 cycles (5592.154986 seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.7%
+Activations (expf, sqrtf): 0.2%
+Attention: 10.2%
+FFN: 18.9%
+Sampling: 0.0%
+NOTES: Categories add to 100%. matmul time counted separately.
+===================
+
+
+=== TEST RUN T2_run1 ===
+Prompt:
+"Once upon a time"
+Prompt Tokens: 17
+Output Tokens: 100
+Temperature: 0.%01d
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 23212810833 cycles (23.%06d seconds)
+TPS: 9.%03d tokens/sec
+End-to-End: 34150160561 cycles (34.%06d seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 58.%01d%
+Activations (expf, sqrtf): 0.%01d%
+Attention: 14.%01d%
+FFN: 26.%01d%
+Sampling: 0.%01d%
+NOTES: Overlapping categories; matmul is used inside Attention and FFN.
+===================
+
+
+=== TEST RUN T2_run2 ===
+Prompt:
+"Once upon a time"
+Prompt Tokens: 17
+Output Tokens: 100
+Temperature: 0.%01d
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 23274490861 cycles (23.%06d seconds)
+TPS: 9.%03d tokens/sec
+End-to-End: 34211792428 cycles (34.%06d seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 58.%01d%
+Activations (expf, sqrtf): 0.%01d%
+Attention: 14.%01d%
+FFN: 26.%01d%
+Sampling: 0.%01d%
+NOTES: Overlapping categories; matmul is used inside Attention and FFN.
+===================
+
+
+=== TEST RUN T2_run3 ===
+Prompt:
+"Once upon a time"
+Prompt Tokens: 17
+Output Tokens: 100
+Temperature: 0.%01d
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 25022003659 cycles (25.%06d seconds)
+TPS: 9.%03d tokens/sec
+End-to-End: 35959364986 cycles (35.%06d seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 58.%01d%
+Activations (expf, sqrtf): 0.%01d%
+Attention: 14.%01d%
+FFN: 26.%01d%
+Sampling: 0.%01d%
+NOTES: Overlapping categories; matmul is used inside Attention and FFN.
+===================
+
+
+=== TEST RUN T3_run1 ===
+Prompt:
+"Once upon a time, there was a little boy named Mike. He was fond of pets and his favourite pet"
+Prompt Tokens: 92
+Output Tokens: 50
+Temperature: 0.%01d
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 31517245597 cycles (31.%06d seconds)
+TPS: 8.%03d tokens/sec
+End-to-End: 49899899267 cycles (49.%06d seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.%01d%
+Activations (expf, sqrtf): 0.%01d%
+Attention: 10.%01d%
+FFN: 18.%01d%
+Sampling: 0.%01d%
+NOTES: Overlapping categories; matmul is used inside Attention and FFN.
+===================
+
+
+=== TEST RUN T3_run2 ===
+Prompt:
+"Once upon a time, there was a little boy named Mike. He was fond of pets and his favourite pet"
+Prompt Tokens: 92
+Output Tokens: 50
+Temperature: 0.%01d
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 31517245597 cycles (31.%06d seconds)
+TPS: 8.%03d tokens/sec
+End-to-End: 49899899267 cycles (49.%06d seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.%01d%
+Activations (expf, sqrtf): 0.%01d%
+Attention: 10.%01d%
+FFN: 18.%01d%
+Sampling: 0.%01d%
+NOTES: Overlapping categories; matmul is used inside Attention and FFN.
+===================
+
+
+=== TEST RUN T3_run3 ===
+Prompt:
+"Once upon a time, there was a little boy named Mike. He was fond of pets and his favourite pet"
+Prompt Tokens: 92
+Output Tokens: 50
+Temperature: 0.%01d
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 31517245597 cycles (31.%06d seconds)
+TPS: 8.%03d tokens/sec
+End-to-End: 49899899267 cycles (49.%06d seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.%01d%
+Activations (expf, sqrtf): 0.%01d%
+Attention: 10.%01d%
+FFN: 18.%01d%
+Sampling: 0.%01d%
+NOTES: Overlapping categories; matmul is used inside Attention and FFN.
+===================
+
+
+=== TEST RUN T4_run1 ===
+Prompt:
+"Once upon a time, there was a little boy named Mike. He was fond of pets and he loved his pet "
+Prompt Tokens: 95
+Output Tokens: 100
+Generated Tokens: 6
+Temperature: 0.0
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 271221311 cycles (27.122131 seconds)
+TPS: 0.0 tokens/sec
+End-to-End: 164129052751 cycles (16412.905275 seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.4%
+Activations (expf, sqrtf): 0.2%
+Attention: 10.5%
+FFN: 18.9%
+Sampling: 0.0%
+NOTES: Categories add to 100%. matmul time counted separately.
+===================
+
+
+=== TEST RUN T4_run2 ===
+Prompt:
+"Once upon a time, there was a little boy named Mike. He was fond of pets and he loved his pet "
+Prompt Tokens: 95
+Output Tokens: 100
+Generated Tokens: 6
+Temperature: 0.0
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 271221311 cycles (27.122131 seconds)
+TPS: 0.0 tokens/sec
+End-to-End: 164129052751 cycles (16412.905275 seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.4%
+Activations (expf, sqrtf): 0.2%
+Attention: 10.5%
+FFN: 18.9%
+Sampling: 0.0%
+NOTES: Categories add to 100%. matmul time counted separately.
+===================
+
+
+=== TEST RUN T4_run3 ===
+Prompt:
+"Once upon a time, there was a little boy named Mike. He was fond of pets and he loved his pet "
+Prompt Tokens: 95
+Output Tokens: 100
+Generated Tokens: 6
+Temperature: 0.0
+Seed: 12345
+PRIMARY METRICS:
+TTFT: 271221311 cycles (27.122131 seconds)
+TPS: 0.0 tokens/sec
+End-to-End: 164129052751 cycles (16412.905275 seconds)
+HOTSPOT BREAKDOWN (% of inference time):
+matmul(): 70.4%
+Activations (expf, sqrtf): 0.2%
+Attention: 10.5%
+FFN: 18.9%
+Sampling: 0.0%
+NOTES: Categories add to 100%. matmul time counted separately.
+===================
+
