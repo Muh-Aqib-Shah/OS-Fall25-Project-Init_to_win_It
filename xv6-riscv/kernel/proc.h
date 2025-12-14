@@ -139,6 +139,13 @@ struct proc {
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
+  
+  // multi threading fields
+  int is_thread;              // 1 if this is a thread, 0 if process
+  struct proc *parent_proc;   // Points to main process if this is a thread
+  int thread_id;              // Unique thread ID within process
+  void *thread_stack;         // User stack for this thread
+  uint64 thread_stack_size;   // Size of user stack
 
   // these are private to the process, so p->lock need not be held.
   uint64 kstack;               // Virtual address of kernel stack
@@ -150,3 +157,7 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 };
+
+int  thread_create(uint64 start_routine, uint64 arg);
+int  thread_join(int tid);
+void thread_exit(void);

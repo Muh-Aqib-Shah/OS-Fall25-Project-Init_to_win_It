@@ -173,6 +173,140 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 }
 
+
+// Allocate a unique thread ID within a process
+static int
+allocate_thread_id(struct proc *parent)
+{
+  static int next_id = 1;
+  // In a real implementation, track used IDs
+  return next_id++;
+}
+
+int
+thread_create(uint64 start_routine, uint64 arg)
+{
+  struct proc *np;
+  struct proc *p = myproc();
+
+  if((np = allocproc()) == 0)
+    return -1;
+
+  np->is_thread = 1;
+  np->parent_proc = p;
+  np->thread_id = allocate_thread_id(p);
+
+  // share address space
+  np->pagetable = p->pagetable;
+
+  // allocate user stack
+  np->thread_stack = kalloc();
+  if(np->thread_stack == 0){
+    freeproc(np);
+    return -1;
+  }
+
+  uint64 stack_va = MAXVA - (np->thread_id + 1) * 2 * PGSIZE;
+  if(mappages(np->pagetable, stack_va, PGSIZE,
+              (uint64)np->thread_stack,
+              PTE_R | PTE_W | PTE_U) < 0){
+    kfree(np->thread_stack);
+    freeproc(np);
+    return -1;
+  }
+
+  memmove(np->trapframe, p->trapframe, sizeof(*np->trapframe));
+  np->trapframe->epc = start_routine;
+  np->trapframe->sp  = stack_va + PGSIZE;
+  np->trapframe->a0  = arg;
+
+  safestrcpy(np->name, p->name, sizeof(p->name));
+  np->cwd = idup(p->cwd);
+  
+  
+  np->state = RUNNABLE;
+  release(&np->lock);
+
+  return np->thread_id;
+}
+
+int
+thread_join(int thread_id)
+{
+  struct proc *np;
+  struct proc *p = myproc();
+  int found;
+  printf("Started  JOIIN");
+
+  acquire(&p->lock);
+  
+  for(;;){
+    found = 0;
+    
+    for(np = proc; np < &proc[NPROC]; np++){
+    printf("Checking proc %d, state=%d\n", np->pid, np->state);
+      // Try to acquire the thread's lock
+      // Make sure we can acquire it without already holding it
+      if(np == p)  // Skip self
+        continue;
+        
+      acquire(&np->lock);
+      
+      if(np->is_thread &&
+         np->parent_proc == p &&
+         np->thread_id == thread_id){
+        found = 1;
+        
+        if(np->state == ZOMBIE){
+          // Clean up the thread
+          if(np->thread_stack){
+            kfree(np->thread_stack);
+            np->thread_stack = 0;
+          }
+          freeproc(np);
+          release(&np->lock);
+          release(&p->lock);
+          return 0;
+        }
+        release(&np->lock);
+        break;  // Found thread, exit inner loop
+      }
+      release(&np->lock);
+    }
+    
+    if(!found){
+      release(&p->lock);
+      return -1;
+    }
+    
+    // Thread found but not dead yet - sleep
+    // sleep() atomically releases p->lock and sleeps
+    sleep(p, &p->lock);
+  }
+}
+
+void
+thread_exit(void)
+{
+  struct proc *p = myproc();
+  if(!p->is_thread)
+    panic("thread_exit by non-thread");
+  
+  // Don't close file descriptors - threads share them with parent
+  
+  acquire(&p->lock);
+  p->state = ZOMBIE;
+  wakeup(p->parent_proc);  // Wake up parent waiting in thread_join
+  
+  // sched() expects p->lock to be held and never returns
+  sched();
+  
+  panic("thread_exit: sched returned");
+}
+
+
+
+
 // Create a user page table for a given process, with no user memory,
 // but with trampoline and trapframe pages.
 pagetable_t
