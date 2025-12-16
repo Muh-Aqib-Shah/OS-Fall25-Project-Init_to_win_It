@@ -166,9 +166,15 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
-  p->pagetable = 0;
+  // Only free the page table if this is a full process. Threads share
+  // their parent's pagetable and freeing it here would corrupt the
+  // parent's address space and lead to double-free/freewalk panics.
+  if(p->pagetable){
+    if(!p->is_thread){
+      proc_freepagetable(p->pagetable, p->sz);
+    }
+    p->pagetable = 0;
+  }
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -194,7 +200,16 @@ thread_create(uint64 start_routine, uint64 arg)
 { 
     struct proc *p = myproc();
     if(p->is_thread){
-      printf("ILLEGAL: THREAD CALLED create_thread bh process: %d\n",p->pid);
+      // Extra diagnostics to help track down why a thread is calling create_thread
+      int ppid = 0;
+      char *pname = p->name;
+      if(p->parent_proc)
+        ppid = p->parent_proc->pid;
+      uint64 epc = 0;
+      if(p->trapframe)
+        epc = p->trapframe->epc;
+      printf("ILLEGAL: THREAD CALLED create_thread by process pid=%d name=%s is_thread=%d parent_proc=%d epc=%p\n",
+             p->pid, pname, p->is_thread, ppid, (void*)epc);
       return -1;
     }
     printf("\nINITIATE A THREAD IN PROCESS: %d\n",p->pid);
@@ -329,13 +344,26 @@ thread_exit(void)
   if(!p->is_thread)
     panic("thread_exit: not a thread");
 
+  struct proc *parent = p->parent_proc;
+
+  // If there is a parent waiting in thread_join, acquire its threadlock
+  // so the wakeup cannot be missed. Then set this thread to ZOMBIE while
+  // holding our p->lock and call sched() with p->lock held (required by
+  // sched()). This mirrors the ordering used by kexit/kwait.
+  if(parent){
+    acquire(&parent->threadlock);
+  }
+
   acquire(&p->lock);
   p->state = ZOMBIE;
-  release(&p->lock);
 
-  // Wake joiner
-  wakeup(p->parent_proc);
+  // Wake the joiner while holding the parent's threadlock to avoid races.
+  if(parent){
+    wakeup(parent);
+    release(&parent->threadlock);
+  }
 
+  // Now switch to scheduler. sched() requires p->lock to be held.
   sched();
   panic("thread_exit returned");
 }
@@ -617,6 +645,16 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        // If this proc shares a pagetable with other threads, ensure the
+        // TRAPFRAME virtual page maps to this proc's trapframe so that
+        // trampoline.S saves/restores user registers into the correct
+        // memory for the currently-running thread.
+        // Safe to unmap+map here because we hold p->lock and are about
+        // to switch to this proc.
+        uvmunmap(p->pagetable, TRAPFRAME, 1, 0);
+        if(mappages(p->pagetable, TRAPFRAME, PGSIZE, (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+          panic("scheduler: mappages TRAPFRAME failed");
+        }
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
