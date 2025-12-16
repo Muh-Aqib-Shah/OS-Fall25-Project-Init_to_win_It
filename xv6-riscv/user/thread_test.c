@@ -10,13 +10,16 @@ void thread_func(void *arg) {
   }
   printf("Thread %d: Goodbye!\n", id);
   thread_exit();
+  printf("THREAD EXITED SUCCESSFULLY");
 }
 
 int main(void) {
-  printf("Creating threads...\n");
+  printf("Creating thread 1...\n");
   
   int t1 = thread_create(thread_func, (void*)1);
+  printf("Creating thread 2...\n");
   int t2 = thread_create(thread_func, (void*)2);
+
   
   printf("Waiting for threads...\n");
   thread_join(t1);
