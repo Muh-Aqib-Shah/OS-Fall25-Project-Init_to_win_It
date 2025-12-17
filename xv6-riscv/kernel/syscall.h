@@ -41,3 +41,12 @@
 #define SYS_getcycles  35
 #define SYS_gettime   36
 #define SYS_getinstret 37
+
+// system calls for threads and mutex milestone 5 baby
+
+#define SYS_thread_create 38
+#define SYS_thread_join   39
+#define SYS_thread_exit   40
+#define SYS_mutex_init    41
+#define SYS_mutex_lock    42
+#define SYS_mutex_unlock  43

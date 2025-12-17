@@ -254,6 +254,8 @@ UPROGS=\
 	$U/_dorphan\
 	$U/_test_mileSt2\
 	$U/_llm\
+    $U/_thread_test\
+	$U/_mutex_test\
 	
 
 ifeq ($(LAB),util)

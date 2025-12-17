@@ -107,6 +107,12 @@ extern uint64 sys_close(void);
 extern uint64 sys_getcycles(void);
 extern uint64 sys_gettime(void);
 extern uint64 sys_getinstret(void);
+extern uint64 sys_thread_create(void);
+extern uint64 sys_thread_join(void);
+extern uint64 sys_thread_exit(void);
+extern uint64 sys_mutex_init(void);
+extern uint64 sys_mutex_lock(void);
+extern uint64 sys_mutex_unlock(void);
 
 #ifdef LAB_NET
 extern uint64 sys_bind(void);
@@ -155,7 +161,13 @@ static uint64 (*syscalls[])(void) = {
 #endif
 [SYS_getcycles]   sys_getcycles,
 [SYS_gettime]    sys_gettime,
-[SYS_getinstret] sys_getinstret
+[SYS_getinstret] sys_getinstret,
+[SYS_thread_create] sys_thread_create,
+[SYS_thread_join]   sys_thread_join,
+[SYS_thread_exit]   sys_thread_exit,
+[SYS_mutex_init]    sys_mutex_init,
+[SYS_mutex_lock]    sys_mutex_lock,
+[SYS_mutex_unlock]  sys_mutex_unlock
 };
 
 

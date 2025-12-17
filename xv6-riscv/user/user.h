@@ -41,6 +41,12 @@ int uptime(void);
 int getcycles(void);
 int gettime(void);
 int getinstret(void);
+int thread_create(void (*start_routine)(void*), void *arg);
+int thread_join(int thread_id);
+void thread_exit(void);
+int mutex_init(mutex_t *mutex);
+void mutex_lock(mutex_t *mutex);
+void mutex_unlock(mutex_t *mutex);
 
 #ifdef LAB_NET
 int bind(uint16);
