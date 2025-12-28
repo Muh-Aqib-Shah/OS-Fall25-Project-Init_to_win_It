@@ -15,6 +15,7 @@ struct proc *initproc;
 int nextpid = 1;
 struct spinlock pid_lock;
 
+extern uint64 thread_exit_trampoline;
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
@@ -213,8 +214,6 @@ thread_create(uint64 start_routine, uint64 arg)
   struct proc *p = myproc();
   struct proc *np;
 
-  if(start_routine == 0)
-    return -1;
   if(p->is_thread)
     return -1;
 
@@ -283,8 +282,11 @@ thread_create(uint64 start_routine, uint64 arg)
   //copy trapframe + override thread start regs
   *(np->trapframe) = *(p->trapframe);
   np->trapframe->kernel_sp = np->kstack + PGSIZE;   // per-thread kernel stack
-  np->trapframe->epc = start_routine;               // start function
-  np->trapframe->sp  = stack_bottom + PGSIZE;       // user stack top
+
+np->trapframe->epc = start_routine;
+np->trapframe->sp  = stack_bottom + PGSIZE - 16;
+np->trapframe->ra  = (uint64)thread_exit_trampoline;
+
   np->trapframe->a0  = arg;                         // arg in a0
 
   // inherit files/cwd/name

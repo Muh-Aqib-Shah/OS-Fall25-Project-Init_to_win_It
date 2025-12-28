@@ -165,3 +165,8 @@ struct proc {
 int  thread_create(uint64 start_routine, uint64 arg);
 int  thread_join(int tid);
 void thread_exit(void);
+
+struct mutex {
+  int locked;
+  struct spinlock lk;
+};

@@ -14,10 +14,10 @@ void thread_func(void *arg) {
 }
 
 int main(void) {
-  printf("Creating thread 1...\n");
+  printf("\nCreating thread 1...\n");
   
   int t1 = thread_create(thread_func, (void*)1);
-  printf("Creating thread 2...\n");
+  printf("\nCreating thread 2...\n");
   int t2 = thread_create(thread_func, (void*)2);
 
   

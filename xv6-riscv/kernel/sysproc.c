@@ -132,8 +132,8 @@ sys_thread_create(void)
   uint64 start_routine = p->trapframe->a0;
   uint64 arg = p->trapframe->a1;
 
-  if(start_routine == 0 || start_routine >= p->sz)
-    return -1;
+  argaddr(0, &start_routine);
+  argaddr(1, &arg);
 
   return thread_create(start_routine, arg);
 }
@@ -142,8 +142,10 @@ uint64
 sys_thread_join(void)
 {
   int tid = myproc()->trapframe->a0;
+  argint(0, &tid);
   if(tid < 0)
     return -1;
+  
   return thread_join(tid);
 }
 

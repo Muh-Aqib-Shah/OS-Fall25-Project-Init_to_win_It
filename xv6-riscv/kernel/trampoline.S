@@ -147,3 +147,9 @@ userret:
         # return to user mode and user pc.
         # usertrapret() set up sstatus and sepc.
         sret
+
+.globl thread_exit_trampoline
+thread_exit_trampoline:
+        li a7, 40
+        ecall
+
