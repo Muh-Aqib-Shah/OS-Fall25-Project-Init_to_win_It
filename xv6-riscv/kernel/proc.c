@@ -166,11 +166,16 @@ freeproc(struct proc *p)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
   // Only free the page table if this is a full process. Threads share
-  // their parent's pagetable and freeing it here would corrupt the
-  // parent's address space and lead to double-free/freewalk panics.
+  // their parent's user pages; unmap without freeing physical memory.
   if(p->pagetable){
     if(!p->is_thread){
       proc_freepagetable(p->pagetable, p->sz);
+    } else {
+      if(p->sz > 0)
+        uvmunmap(p->pagetable, 0, PGROUNDUP(p->sz)/PGSIZE, 0);
+      uvmunmap(p->pagetable, TRAMPOLINE, 1, 0);
+      uvmunmap(p->pagetable, TRAPFRAME, 1, 0);
+      uvmfree(p->pagetable, 0);
     }
     p->pagetable = 0;
   }
@@ -182,6 +187,14 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->is_thread = 0;
+  p->parent_proc = 0;
+  p->thread_id = 0;
+  p->thread_stack = 0;
+  p->thread_stack_size = 0;
+  p->next_tid = 1;
+  p->parent_thread_stack_top = 0;
+  p->thread_stack_top = 0;
 }
 
 // Allocate a unique thread ID within a process
@@ -196,72 +209,96 @@ freeproc(struct proc *p)
 // Alternative: Change thread_create to accept uint64
 int
 thread_create(uint64 start_routine, uint64 arg)
-{ 
-    struct proc *p = myproc();
-    if(p->is_thread){
-      return -1;
-    }
-    
-    struct proc *np;
+{
+  struct proc *p = myproc();
+  struct proc *np;
 
-    // Allocate new thread (allocproc acquires np->lock)
-    if ((np = allocproc()) == 0)
-        return -1;
+  if(start_routine == 0)
+    return -1;
+  if(p->is_thread)
+    return -1;
 
-    // Mark as thread
-    np->is_thread = 1;
-    np->parent_proc = p;
+  // Allocate new thread; allocproc returns with np->lock held.
+  if((np = allocproc()) == 0)
+    return -1;
 
-    // Allocate a unique thread ID
-    if (!p->next_tid) p->next_tid = 1;  // initialize if not done
-    np->thread_id = p->next_tid++;
+  np->is_thread = 1;
+  np->parent_proc = p;
+  np->thread_id = p->next_tid++;
 
-    // Share address space
-    np->pagetable = p->pagetable;
-    np->sz = p->sz;
-
-    // Allocate user stack
-    np->thread_stack_size = PGSIZE;
-    if ((np->thread_stack = kalloc()) == 0) {
-        freeproc(np);
-        return -1;
-    }
-
-    // Pick a stack virtual address safely above parent memory
-   
-    uint64 stack_va = p->parent_thread_stack_top - np->thread_id * PGSIZE;
-
-    // Map the physical page
-    if(mappages(np->pagetable, stack_va, PGSIZE, 
-        (uint64)np->thread_stack, 
-        PTE_R | PTE_W | PTE_U) < 0){
-          kfree(np->thread_stack);
-          freeproc(np);
-          return -1;
-    }
-
-    // Update safe top for next thread
-    np->thread_stack_top = stack_va;
-
-    // Copy parent trapframe and set up thread entry
-    *(np->trapframe) = *(p->trapframe);
-    np->trapframe->epc = start_routine;        // thread start
-    np->trapframe->sp  = stack_va + PGSIZE;    // top of stack
-    np->trapframe->a0  = arg;                  // argument
-
-    // Inherit open files
-    for (int i = 0; i < NOFILE; i++)
-        if (p->ofile[i])
-            np->ofile[i] = filedup(p->ofile[i]);
-    np->cwd = idup(p->cwd);
-
-    safestrcpy(np->name, p->name, sizeof(np->name));
-
-    // Make thread runnable
-    np->state = RUNNABLE;
+  // Share user memory into the new pagetable.
+  if(uvmshare(p->pagetable, np->pagetable, p->sz) < 0){
+    freeproc(np);
     release(&np->lock);
+    return -1;
+  }
+  np->sz = p->sz;
 
-    return np->thread_id;
+  // Allocate + map user stack at next page boundary.
+  uint64 stack_bottom = PGROUNDUP(p->sz);
+  if(stack_bottom + PGSIZE > TRAPFRAME){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+
+  // drop the child lock while doing allocations/mapping
+  release(&np->lock);
+
+  char *mem = kalloc();
+  if(mem == 0){
+    acquire(&np->lock);
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  memset(mem, 0, PGSIZE);
+
+  if(mappages(p->pagetable, stack_bottom, PGSIZE, (uint64)mem, PTE_R|PTE_W|PTE_U) < 0){
+    kfree(mem);
+    acquire(&np->lock);
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  if(mappages(np->pagetable, stack_bottom, PGSIZE, (uint64)mem, PTE_R|PTE_W|PTE_U) < 0){
+    uvmunmap(p->pagetable, stack_bottom, 1, 1);
+    acquire(&np->lock);
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+
+  acquire(&np->lock);
+  np->thread_stack = mem;
+  np->thread_stack_size = PGSIZE;
+
+  acquire(&p->threadlock);
+  p->sz = stack_bottom + PGSIZE;
+  release(&p->threadlock);
+  np->sz = p->sz;
+
+  np->thread_stack_top = stack_bottom;
+
+  //copy trapframe + override thread start regs
+  *(np->trapframe) = *(p->trapframe);
+  np->trapframe->kernel_sp = np->kstack + PGSIZE;   // per-thread kernel stack
+  np->trapframe->epc = start_routine;               // start function
+  np->trapframe->sp  = stack_bottom + PGSIZE;       // user stack top
+  np->trapframe->a0  = arg;                         // arg in a0
+
+  // inherit files/cwd/name
+  for(int i = 0; i < NOFILE; i++)
+    if(p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  np->cwd = idup(p->cwd);
+  safestrcpy(np->name, p->name, sizeof(np->name));
+
+  // runnable
+  np->state = RUNNABLE;
+  release(&np->lock);
+
+  return np->thread_id;
 }
 
 
@@ -273,7 +310,7 @@ thread_join(int thread_id)
   struct proc *p = myproc();
   struct proc *tp;
 
-  acquire(&p->threadlock);
+  acquire(&wait_lock);
 
   for(;;){
     int found = 0;
@@ -289,7 +326,10 @@ thread_join(int thread_id)
         if(tp->state == ZOMBIE){
           
           uint64 stack_va = tp->thread_stack_top;
+          // unmap the thread's private stack from both pagetables before free
           uvmunmap(tp->pagetable, stack_va, 1, 0);
+          if(p->pagetable)
+            uvmunmap(p->pagetable, stack_va, 1, 0);
 
           // Free user stack
           if(tp->thread_stack){
@@ -297,9 +337,9 @@ thread_join(int thread_id)
             tp->thread_stack = 0;
           }
 
+          freeproc(tp); // must hold tp->lock while freeing
           release(&tp->lock);
-          freeproc(tp);
-          release(&p->threadlock);
+          release(&wait_lock);
           return 0;
         }
         release(&tp->lock);
@@ -307,12 +347,12 @@ thread_join(int thread_id)
     }
 
     if(!found){
-      release(&p->threadlock);
+      release(&wait_lock);
       return -1;
     }
 
-    // SAFE: sleep does NOT re-acquire threadlock internally
-    sleep(p, &p->threadlock);
+    // Sleep on parent with wait_lock held to avoid lost wakeups
+    sleep(p, &wait_lock);
   }
 }
 
@@ -328,24 +368,16 @@ thread_exit(void)
 
   struct proc *parent = p->parent_proc;
 
-  // If there is a parent waiting in thread_join, acquire its threadlock
-  // so the wakeup cannot be missed. Then set this thread to ZOMBIE while
-  // holding our p->lock and call sched() with p->lock held (required by
-  // sched()). This mirrors the ordering used by kexit/kwait.
-  if(parent){
-    acquire(&parent->threadlock);
-  }
-
+  acquire(&wait_lock);
   acquire(&p->lock);
   p->state = ZOMBIE;
 
-  // Wake the joiner while holding the parent's threadlock to avoid races.
   if(parent){
-    wakeup(parent);
-    release(&parent->threadlock);
+    wakeup(parent); // parent sleeps on itself with wait_lock
   }
 
-  // Now switch to scheduler. sched() requires p->lock to be held.
+  release(&wait_lock);
+  // sched() requires p->lock held
   sched();
   panic("thread_exit returned");
 }

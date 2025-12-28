@@ -128,11 +128,12 @@ sys_getinstret(void)
 uint64
 sys_thread_create(void)
 {
-  uint64 start_routine;
-  uint64 arg;
+  struct proc *p = myproc();
+  uint64 start_routine = p->trapframe->a0;
+  uint64 arg = p->trapframe->a1;
 
-  argaddr(0, &start_routine);
-  argaddr(1, &arg);
+  if(start_routine == 0 || start_routine >= p->sz)
+    return -1;
 
   return thread_create(start_routine, arg);
 }
@@ -140,10 +141,9 @@ sys_thread_create(void)
 uint64
 sys_thread_join(void)
 {
-  int tid;
-
-  argint(0, &tid);
-
+  int tid = myproc()->trapframe->a0;
+  if(tid < 0)
+    return -1;
   return thread_join(tid);
 }
 
@@ -160,18 +160,19 @@ sys_thread_exit(void)
 uint64
 sys_mutex_init(void)
 {
-  uint64 mutex_addr;
-  
-  argaddr(0, &mutex_addr);
-  
+  struct proc *p = myproc();
+  uint64 mutex_ptr = p->trapframe->a0;
+
+  if(mutex_ptr == 0 || mutex_ptr >= p->sz)
+    return -1;
+
   mutex_t m;
   m.locked = 0;
   m.owner_tid = -1;
-  
-  if(copyout(myproc()->pagetable, mutex_addr, 
-             (char*)&m, sizeof(m)) < 0)
+
+  if(copyout(p->pagetable, mutex_ptr, (char*)&m, sizeof(m)) < 0)
     return -1;
-  
+
   return 0;
 }
 
@@ -179,36 +180,31 @@ sys_mutex_init(void)
 uint64
 sys_mutex_lock(void)
 {
-  uint64 mutex_addr;
-  
-  argaddr(0, &mutex_addr);
-  
-  mutex_t m;
   struct proc *p = myproc();
-  
+  uint64 mutex_ptr = p->trapframe->a0;
+
+  if(mutex_ptr == 0 || mutex_ptr >= p->sz)
+    return -1;
+
+  mutex_t m;
   for(;;){
-    // Read current value
-    if(copyin(p->pagetable, (char*)&m, mutex_addr, sizeof(m)) < 0)
+    if(copyin(p->pagetable, (char*)&m, mutex_ptr, sizeof(m)) < 0)
       return -1;
-    
+
     if(m.locked == 0){
-      // Try to acquire
       m.locked = 1;
       m.owner_tid = p->thread_id;
-      
-      if(copyout(p->pagetable, mutex_addr, (char*)&m, sizeof(m)) < 0)
+
+      if(copyout(p->pagetable, mutex_ptr, (char*)&m, sizeof(m)) < 0)
         return -1;
-      
-      // Verify we got it (check again)
-      if(copyin(p->pagetable, (char*)&m, mutex_addr, sizeof(m)) < 0)
+
+      if(copyin(p->pagetable, (char*)&m, mutex_ptr, sizeof(m)) < 0)
         return -1;
-      
+
       if(m.locked == 1 && m.owner_tid == p->thread_id){
-        return 0;  // Success
+        return 0;
       }
     }
-    
-    // Busy wait (yield to other threads)
     yield();
   }
 }
@@ -217,16 +213,18 @@ sys_mutex_lock(void)
 uint64
 sys_mutex_unlock(void)
 {
-  uint64 mutex_addr;
-  
-  argaddr(0, &mutex_addr);
-  
+  struct proc *p = myproc();
+  uint64 mutex_ptr = p->trapframe->a0;
+
+  if(mutex_ptr == 0 || mutex_ptr >= p->sz)
+    return -1;
+
   mutex_t m;
   m.locked = 0;
   m.owner_tid = -1;
-  
-  if(copyout(myproc()->pagetable, mutex_addr, (char*)&m, sizeof(m)) < 0)
+
+  if(copyout(p->pagetable, mutex_ptr, (char*)&m, sizeof(m)) < 0)
     return -1;
-  
+
   return 0;
 }

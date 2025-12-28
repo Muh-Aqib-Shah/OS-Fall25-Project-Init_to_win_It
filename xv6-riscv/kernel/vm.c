@@ -282,7 +282,8 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
-      panic("freewalk: leaf");
+      // Leaf present; clear entry but do not free physical memory here.
+      pagetable[i] = 0;
     }
   }
   kfree((void*)pagetable);
@@ -332,6 +333,40 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+}
+
+// Share all valid user mappings from old into new, without copying pages.
+int
+uvmshare(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    // Skip unmapped holes (e.g., lazy sbrk regions).
+    if((pte = walk(old, i, 0)) == 0)
+      continue;
+    if((*pte & PTE_V) == 0)
+      continue;
+
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      return -1;
+    }
+  }
+  return 0;
+}
+
+// Free a thread's pagetable without freeing shared user pages.
+void
+uvmfree_thread(pagetable_t pagetable, uint64 sz)
+{
+  if(sz > 0)
+    uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 0);
+  freewalk(pagetable);
 }
 
 // mark a PTE invalid for user access.
